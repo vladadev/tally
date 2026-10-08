@@ -1,0 +1,140 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(cuid())
+  name         String
+  email        String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  ownedGroups  Group[]      @relation("GroupOwner")
+  memberships  Membership[]
+
+  paidExpenses    Expense[]      @relation("ExpensePayer")
+  createdExpenses Expense[]      @relation("ExpenseCreator")
+  expenseShares   ExpenseShare[]
+
+  settlementsSent     Settlement[]  @relation("SettlementFrom")
+  settlementsReceived Settlement[]  @relation("SettlementTo")
+  settlementsCreated  Settlement[]  @relation("SettlementCreator")
+
+  activityLogs ActivityLog[]
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  currency    String   @default("EUR") // EUR, USD, RSD, GBP
+  inviteToken String   @unique @default(cuid())
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User         @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  expenses    Expense[]
+  settlements Settlement[]
+  activityLogs ActivityLog[]
+
+  @@index([ownerId])
+}
+
+model Membership {
+  id       String   @id @default(cuid())
+  userId   String
+  groupId  String
+  role     String   @default("MEMBER") // OWNER | MEMBER
+  joinedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  groupId     String
+  description String
+  amountCents Int
+  date        DateTime
+  category    String   // Food, Transport, Housing, Entertainment, Utilities, Other
+  note        String?
+  paidById    String
+  createdById String
+  splitType   String   // EQUAL, EXACT, PERCENTAGE, SHARES
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  group     Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  paidBy    User           @relation("ExpensePayer", fields: [paidById], references: [id], onDelete: Cascade)
+  createdBy User           @relation("ExpenseCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  shares    ExpenseShare[]
+
+  @@index([groupId, date])
+  @@index([paidById])
+  @@index([createdById])
+}
+
+model ExpenseShare {
+  id          String @id @default(cuid())
+  expenseId   String
+  userId      String
+  amountCents Int
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, userId])
+  @@index([expenseId])
+  @@index([userId])
+}
+
+model Settlement {
+  id          String   @id @default(cuid())
+  groupId     String
+  fromUserId  String
+  toUserId    String
+  amountCents Int
+  date        DateTime
+  createdById String
+  createdAt   DateTime @default(now())
+
+  group     Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  fromUser  User  @relation("SettlementFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser    User  @relation("SettlementTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  createdBy User  @relation("SettlementCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([groupId, date])
+  @@index([fromUserId])
+  @@index([toUserId])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  groupId   String
+  actorId   String
+  type      String   // EXPENSE_CREATED, EXPENSE_UPDATED, EXPENSE_DELETED, SETTLEMENT_CREATED, MEMBER_JOINED, MEMBER_REMOVED, MEMBER_LEFT, GROUP_UPDATED
+  payload   String   // JSON string
+  createdAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  actor User  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, createdAt])
+  @@index([actorId])
+}
